@@ -4,16 +4,16 @@ from components.message import Message
 
 RECV_SIZE = 1024
 
-def send(sock, identifier, data):
-    sock.sendall(Message(identifier, data).encode())
+def send(sock, identifier, number, data):
+    sock.sendall(Message(identifier, number, data).encode())
 
 
 def recv(sock):
     encoded = sock.recv(RECV_SIZE)
     message = Message(encoded=encoded)
     if message.valid:
-        return message.identifier, message.data
-    return None, None
+        return message.identifier, message.number, message.data
+    return None, None, None
 
 
 def hostport(address_string):

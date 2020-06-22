@@ -15,8 +15,8 @@ class Server:
     Communicates via a TCP socket.
     """
 
-    def __init__(self, identifier, port, verbose=False):
-        """ Returns a Server object.
+    def __init__(self, identifier, port, verbose=True):
+        """ Creates a Server object.
 
         Binds the specified port.
 
@@ -25,6 +25,7 @@ class Server:
             port: The int TCP port number this server should listen on.
             verbose: A boolean; if True the server will print info to stdout.
         """
+        # validate arguments
         if not isinstance(identifier, str) and not isinstance(identifier, int):
             raise TypeError(f'identifier {identifier} has type '
                             '{type(identifier)}; must be int or str')
@@ -60,18 +61,31 @@ class Server:
         print(f'Server {self._identifier}: ' + comb_args, **kwargs, file=self._stdout)
 
 
+    def _handle_lfd(self, conn, lfd_identifier):
+        self._print(f'Connection from LFD {lfd_identifier}')
+
+        _, number, heartbeat = utils.recv(conn)
+        while heartbeat is not None:
+            utils.send(conn, self._identifier, number, heartbeat)
+            _, number, heartbeat = utils.recv(conn)
+
+        self._print(f'Connection closed by LFD {lfd_identifier}')
+
+
     def _handle_client(self, conn, client_identifier):
         self._print(f'Connection from Client {client_identifier}')
 
-        _, request = utils.recv(conn)
+        _, number, request = utils.recv(conn)
         while request is not None:
-            self._print(f'Received {request} from Client {client_identifier}')
+            self._print(f'Received (#{number}) {request} from Client '
+                        f'{client_identifier}')
 
             response = self._state.update(int(request))
-            self._print(f'Sending {response} to Client {client_identifier}')
-            utils.send(conn, self._identifier, response)
+            self._print(f'Sending (#{number}) {response} to Client '
+                        f'{client_identifier}')
+            utils.send(conn, self._identifier, number, response)
 
-            _, request = utils.recv(conn)
+            _, number, request = utils.recv(conn)
 
         self._print(f'Connection closed by Client {client_identifier}')
 
@@ -82,11 +96,13 @@ class Server:
 
         while True:
             conn, _ = self._sock.accept()
-            utils.send(conn, self._identifier, 'connected')
-            client_identifier, _ = utils.recv(conn)
-            # make sure client is still connected
-            if client_identifier is not None:
-                Thread(target=self._handle_client, args=[conn, client_identifier]).start()
+            identifier, number, data = utils.recv(conn)
+            utils.send(conn, self._identifier, number, 'server')
+            # check for lfd/client
+            if data == 'lfd':
+                Thread(target=self._handle_lfd, args=[conn, identifier]).start()
+            elif data == 'client':
+                Thread(target=self._handle_client, args=[conn, identifier]).start()
 
 
     def start(self):
@@ -95,15 +111,13 @@ class Server:
 
 
     def stop(self):
-        self._print('Stopping')
+        self._print('Stopping server')
         if self._process is not None:
             # stop serving requests
             self._process.terminate()
 
             # stop listening for connections
             self._sock.shutdown(socket.SHUT_RDWR)
-
-            self._print('Server stopped')
 
 
     def is_running(self):

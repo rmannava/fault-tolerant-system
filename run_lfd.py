@@ -5,22 +5,21 @@ import signal
 
 import argparse
 
-from components.client import Client
+from components.local_fault_detector import LocalFaultDetector
 
 
 def stop(sig, frame):
-    if client is not None:
-        client.stop()
+    if lfd is not None:
+        lfd.stop()
 
 if __name__ == '__main__':
-    client = None
+    lfd = None
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-i', '--identifier', help='client identifier')
+    parser.add_argument('-i', '--identifier', help='LFD identifier')
     parser.add_argument('-hp', '--hostport', help='server hostport')
-    parser.add_argument('-int', '--interval', help='client request interval in seconds')
-    parser.add_argument('-l', '--limit', help='limit number of client requests')
+    parser.add_argument('-int', '--interval', help='heartbeat interval in seconds')
 
     args = parser.parse_args()
 
@@ -28,7 +27,7 @@ if __name__ == '__main__':
         print('Identifier, port, and interval must be specified')
         sys.exit(1)
 
-    client = Client(args.identifier, args.hostport, int(args.interval))
-    client.start(args.limit)
+    lfd = LocalFaultDetector(args.identifier, args.hostport, int(args.interval))
+    lfd.start()
 
     signal.signal(signal.SIGINT, stop)

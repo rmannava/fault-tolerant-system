@@ -1,32 +1,31 @@
-""" A client in a distributed system. """
+""" A local fault detector in a distributed system. """
 
 import os
 import sys
 import time
 import socket
-import random
 from multiprocessing import Process
 
 import components.utils as utils
 
-class Client:
-    """ The Client class.
+class LocalFaultDetector:
+    """ The LocalFaultDetector class.
 
     Communicates via a TCP socket.
     """
 
     def __init__(self, identifier, server_hostport, interval, verbose=True):
-        """ Creates a Client object.
+        """ Creates a LocalFaultDetector object.
 
         Opens a connection to the server hostport.
 
         Args:
-            identifier: The int or string used to identify this client.
-            server_port: The string hostport of the server that this client
-                should connect to.
+            identifier: The int or string used to identify this lfd.
+            server_port: The string hostport of the server that this lfd should
+                connect to.
             interval: The positive integer interval in seconds at which the
-                client should make requests to the server.
-            verbose: A boolean; if True the client will print info to stdout.
+                lfd should send heartbeats to the server.
+            verbose: A boolean; if True the lfd will print info to stdout.
         """
         # validate arguments
         if not isinstance(identifier, str) and not isinstance(identifier, int):
@@ -49,7 +48,7 @@ class Client:
             dev_null = open(os.devnull, 'w')
             self._stdout = dev_null
 
-        # client info
+        # lfd info
         self._identifier = identifier
         self._server_hostport = server_hostport
         self._interval = interval
@@ -57,7 +56,7 @@ class Client:
         # create socket
         self._sock = socket.socket()
 
-        # client process
+        # lfd process
         self._process = None
 
 
@@ -71,11 +70,11 @@ class Client:
         self._sock = socket.socket()
 
 
-    def _request(self, limit=None):
+    def _heartbeat(self):
         self._print(f'Connecting to server at {self._server_hostport}')
         self._sock.connect(utils.address(self._server_hostport))
 
-        utils.send(self._sock, self._identifier, 0, 'client')
+        utils.send(self._sock, self._identifier, 0, 'lfd')
         server_identifier, _, _ = utils.recv(self._sock)
         # make sure server is still connected
         if server_identifier is None:
@@ -83,42 +82,36 @@ class Client:
             self._print(f'Connection closed by server at {self._server_hostport}')
         self._print(f'Connected to Server {server_identifier}')
 
-        num_requests = 0
-        while limit is None or num_requests < int(limit):
-            num_requests += 1
-
-            request = random.randint(1, 10)
-            self._print(f'Sending (#{num_requests}) {request} to Server '
+        number = 1
+        while True:
+            self._print(f'Sending heartbeat #{number} to Server '
                         f'{server_identifier}')
-            utils.send(self._sock, self._identifier, num_requests, request)
+            utils.send(self._sock, self._identifier, number, 'heartbeat')
 
             _, res_number, response = utils.recv(self._sock)
             if response is None:
-                self._print(f'Connection closed by Server {server_identifier}')
-                self._print(f'Stopping client after {num_requests-1} '
-                            'successful request(s)')
+                self._print(f'No response from Server {server_identifier}')
+                self._print('Stopping LFD')
                 self._close_conn()
                 return
-            self._print(f'Received (#{res_number}) {response} from Server '
+            self._print(f'Heartbeat response #{res_number} from Server '
                         f'{server_identifier}')
 
+            number += 1
             time.sleep(self._interval)
 
-        self._print(f'Completed {num_requests} request(s)')
-        self._close_conn()
-        self._print(f'Connection to Server {server_identifier} closed')
 
-
-    def start(self, limit=None):
-        self._process = Process(target=self._request, args=[limit])
+    def start(self):
+        self._process = Process(target=self._heartbeat)
         self._process.start()
 
 
     def stop(self):
-        self._print('Stopping client')
+        self._print('Stopping')
         if self._process is not None:
             self._process.terminate()
             self._close_conn()
+            self._print('LFD stopped')
 
 
     def is_running(self):

@@ -10,42 +10,8 @@ from multiprocessing import Process
 import components.utils as utils
 
 class Client:
-    """ The Client class.
-
-    Communicates via a TCP socket.
-    """
 
     def __init__(self, identifier, server_hostports, interval, verbose=True):
-        """ Creates a Client object.
-
-        Opens a connection to the server hostport.
-
-        Args:
-            identifier: The int or string used to identify this client.
-            server_hostports: A single string or list of string hostports of
-                the servers that this client should connect to.
-            interval: The positive integer interval in seconds at which the
-                client should make requests to the server.
-            verbose: A boolean; if True the client will print info to stdout.
-        """
-        # validate arguments
-        if not isinstance(identifier, str) and not isinstance(identifier, int):
-            raise TypeError(f'identifier {identifier} has type '
-                            f'{type(identifier)}; must be int or str')
-        if not isinstance(server_hostports, list):
-            server_hostports = [server_hostports]
-        if not all(isinstance(hostport, str) for hostport in server_hostports):
-            raise TypeError('server_hostports must have type str or '
-                            'list[str]')
-        if not isinstance(interval, int):
-            raise TypeError(f'interval {interval} has type {type(interval)}; '
-                            'must be int')
-        if interval <= 0:
-            raise ValueError(f'interval {interval} must be a positive value')
-        if not isinstance(verbose, bool):
-            raise TypeError(f'verbose {verbose} has type {type(verbose)}; must '
-                            'be bool')
-
         self._stdout = sys.stdout
         if not verbose:
             dev_null = open(os.devnull, 'w')
@@ -78,27 +44,37 @@ class Client:
                 self._socks[i] = socket.socket()
 
 
-    def _request(self, limit=None):
-        server_identifiers = ['' for i in range(len(self._socks))]
-        # connect to each server
-        for i in range(len(self._socks)):
-            sock = self._socks[i]
-            server_hostport = self._server_hostports[i]
+    def _connect(self, index):
+        try:
+            sock = self._socks[index]
+            server_hostport = self._server_hostports[index]
             self._print(f'Connecting to server at {server_hostport}')
             sock.connect(utils.address(server_hostport))
 
             utils.send(sock, self._identifier, 0, 'client')
             server_identifier, _, _, _ = utils.recv(sock)
-            server_identifiers[i] = server_identifier
 
             # make sure server is still connected
             if server_identifier is None:
                 sock.close()
-                self._socks[i] = socket.socket()
-                self._print(f'Connection closed by server at {server_hostport}')
-            self._print(f'Connected to Server {server_identifier}')
-            self._connected[i] = True
+                self._socks[index] = socket.socket()
+                self._print('Connection closed by server at '
+                            f'{server_hostport}')
+                self._connected[index] = False
+            else:
+                self._print(f'Connected to Server {server_identifier}')
+                self._connected[index] = True
+            return server_identifier
+        except Exception:
+            self._connected[index] = False
+            return ''
 
+
+    def _request(self, limit=None):
+        server_identifiers = ['' for i in range(len(self._socks))]
+        # connect to each server
+        for i in range(len(self._socks)):
+            server_identifiers[i] = self._connect(i)
         num_requests = 0
         while limit is None or num_requests < int(limit):
             num_requests += 1
@@ -113,6 +89,8 @@ class Client:
             request = random.randint(1, 10)
             response = None
             for i in range(len(self._socks)):
+                if not self._connected[i]:
+                    self._connect(i)
                 if self._connected[i]:
                     sock = self._socks[i]
                     self._print(f'Sending (#{num_requests}) {request} to '
@@ -126,7 +104,7 @@ class Client:
                         sock.close()
                         self._socks[i] = socket.socket()
                         self._connected[i] = False
-                    else:
+                    elif res != 'ok':
                         if response is None:
                             response = res
                             self._print(f'Received (#{res_number}) {res} from '

@@ -8,13 +8,14 @@ import argparse
 from components.client import Client
 
 
+client = None
+
+
 def stop(sig, frame):
     if client is not None:
         client.stop()
 
 if __name__ == '__main__':
-    client = None
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-i', '--identifier', help='client identifier')
@@ -24,8 +25,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.identifier is None or args.hostports is None or args.interval is None:
-        print('Identifier, hostports, and interval must be specified')
+    required = [args.identifier, args.hostports, args.interval]
+    if any(arg is None for arg in required):
+        print('Missing required arg(s)')
         sys.exit(1)
 
     client = Client(args.identifier, args.hostports.split(' '), int(args.interval))

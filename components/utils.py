@@ -15,7 +15,8 @@ def recv(sock):
     if message.valid:
         if message.state is not None:
             message.state = ServerState(message.state)
-        return message.identifier, message.number, message.data, message.state
+        return (message.identifier, int(message.number), message.data,
+                message.state)
     return None, None, None, None
 
 

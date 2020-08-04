@@ -8,13 +8,14 @@ import argparse
 from components.local_fault_detector import LocalFaultDetector
 
 
+lfd = None
+
+
 def stop(sig, frame):
     if lfd is not None:
         lfd.stop()
 
 if __name__ == '__main__':
-    lfd = None
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-i', '--identifier', help='LFD identifier')
@@ -24,8 +25,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.identifier is None or args.server_hostport is None or args.gfd_hostport is None or args.interval is None:
-        print('Identifier, port, and interval must be specified')
+    required = [args.identifier, args.server_hostport, args.gfd_hostport, args.interval]
+    if any(arg is None for arg in required):
+        print('Missing required arg(s)')
         sys.exit(1)
 
     lfd = LocalFaultDetector(args.identifier, args.server_hostport, args.gfd_hostport, int(args.interval))
